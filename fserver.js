@@ -1,3 +1,5 @@
+// 어린시절 한겨울의 추억
+
 const express = require('express');
 const server  = express();
 const geoip   = require('geoip-lite');
@@ -6,6 +8,8 @@ const path    = require('path');
 const _jsdom = require('jsdom');  // 9.12.0 버전
 
 const Promise = require('bluebird');
+
+const host = '192.168.0.10', sitename = '어린시절 한겨울의 추억';
 
 function jsdom(html) {
 	return _jsdom.jsdom(html);
@@ -110,6 +114,15 @@ function render(title, content) {
 				margin: -10px -10px;
 			}
 			
+			a {
+				text-decoration: none;
+			}
+			
+			a.btnlink {
+				text-decoration: none;
+				color: currentcolor;
+			}
+			
 			@media ( max-width: 620px ) {
 				body {
 					margin: 10px;
@@ -117,8 +130,30 @@ function render(title, content) {
 				}
 			}
 			
-			a {
-				text-decoration: none;
+			@media only screen and (max-width: 639px) {
+				.nomobile {
+					display: none;
+				}
+			}
+			
+			@media only screen and (max-width: 799px) {
+				.nomobil2 {
+					display: none;
+				}
+			}
+			
+			@media only screen and (min-width: 800px) {
+				body {
+					font-size: 12px;
+				}
+				
+				small, code, pre, xmp, p {
+					font-size: 16px;
+				}
+				
+				input, button, textarea, select {
+					font-size: 9pt;
+				}
 			}
 		</style>
 		
@@ -152,7 +187,7 @@ server.all('*', (req, res, next) => {
 	if(!ip) {
 		return;
 	}
-	if(ip == '192.168.0.10' || ip == '192.168.0.11') {
+	if(ip == '192.168.0.10' || ip == '192.168.0.11' || ip == '192.168.0.7') {
 		return next();
 	}
 	if(ip.startsWith('192.168.0')) {
@@ -178,7 +213,7 @@ const tokens = [];
 const sha3 = require('sha3');
 
 server.get('/auth', (req, res, next) => {
-	res.send(render('비밀의 겨울눈밭', `
+	res.send(render(sitename, `
 		<form method=post>
 			<p>사용자 인증이 진행 중입니다</p>
 		
@@ -230,7 +265,80 @@ server.get('/auth/generate', (req, res) => {
 	res.status(204).send('');
 });
 
-server.get(/\/downloads(.*)/i, (req, res) => {
+function readFile(p, noerror = 0) {
+    return new Promise((resolve, reject) => {
+        fs.readFile(p, 'utf8', (e, r) => {
+            if(e) {
+				if(noerror) resolve('');
+                reject(e);
+            } else {
+                resolve(r.toString());
+            }
+        });
+    });
+}
+
+function readdir(p) {
+    return new Promise((resolve, reject) => {
+        fs.readdir(p, (e, r) => {
+            if(e) {
+                reject(e);
+            } else {
+                resolve(r);
+            }
+        });
+    });
+}
+
+function lstat(p) {
+    return new Promise((resolve, reject) => {
+        fs.lstat(p, (e, r) => {
+            if(e) {
+                reject(e);
+            } else {
+                resolve(r);
+            }
+        });
+    });
+}
+
+function stat(p) {
+    return new Promise((resolve, reject) => {
+        fs.stat(p, (e, r) => {
+            if(e) {
+                reject(e);
+            } else {
+                resolve(r);
+            }
+        });
+    });
+}
+
+function realpath(p) {
+    return new Promise((resolve, reject) => {
+        fs.realpath(p, (e, r) => {
+            if(e) {
+                reject(e);
+            } else {
+                resolve(r);
+            }
+        });
+    });
+}
+
+function exists(p) {
+    return new Promise((resolve, reject) => {
+        fs.readFile(p, (e, r) => {
+            if(e) {
+                resolve(false);
+            } else {
+                resolve(true);
+            }
+        });
+    });
+}
+
+server.get(/^\/files(.*)$/i, async (req, res) => {
 	const pth = req.params[0];
 	
 	if(pth.includes('..')) {
@@ -242,21 +350,37 @@ server.get(/\/downloads(.*)/i, (req, res) => {
 	}
 	
 	if(!pth.endsWith('/')) {
-		return res.redirect('/downloads' + pth + '/');
+		return res.redirect('/files' + pth + '/');
 	}
 	
 	var content = `
-		<p>탐색 중 - ${pth || '/'}</p>
+		<p>
+			탐색 중 <code>${pth || '/'}</code>
+			
+			<span style="float: right;" class=nomobil2>
+				<a class=btnlink onclick="history.back();"><button>뒤로</button></a>
+				<a class=btnlink onclick="history.forward();"><button>앞으로</button></a>
+				<a class=btnlink href="?"><button>새로 고침</button></a>
+				<a class=btnlink href=".."><button>위로</button></a>
+				<a class=btnlink href="/files/"><button>루트로</button></a>
+			</span>
+		</p>
 	
 		<table class=table>
 			<colgroup>
+				<col class=nomobile style="width: 40px;" />
 				<col />
+				<col class=nomobil2 style="width: 160px;" />
+				<col class=nomobile style="width: 120px;" />
 				<col style="width: 120px;" />
 			</colgroup>
 		
 			<thead>
 				<tr>
+					<th class=nomobile>#</th>
 					<th>이름</th>
+					<th class=nomobil2>수정한 날짜</th>
+					<th class=nomobile>크기</th>
 					<th>작업</th>
 				<tr>
 			</thead>
@@ -265,47 +389,74 @@ server.get(/\/downloads(.*)/i, (req, res) => {
 	`;
 	
 	try {
-		fs.readdirSync('./downloadable' + pth);
+		await readdir('./downloadable' + pth);
 	} catch(e) {
 		print(e);
-		return res.send(render(':&lt;', '<h2>디렉토리가 없습니다.</h2>'));
+		return res.send(render(':&lt;', '<h2>디렉토리가 없습니다.</h2><a href=".." onclick="history.back(); return false;">[뒤로 가기]</a>'));
 	}
 	
-	if(!(fs.lstatSync('./downloadable' + pth).isDirectory())) {
-		return res.send(render(':&lt;', '<h2>디렉토리가 아닙니다.</h2>'));
+	if(!((await lstat('./downloadable' + pth)).isDirectory())) {
+		return res.send(render(':&lt;', '<h2>디렉토리가 아닙니다.</h2><a href=".." onclick="history.back(); return false;">[뒤로 가기]</a>'));
 	}
 	
-	var idir = `<img src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAO0lEQVQ4jWNgQID/WDDR4H9DgwMGJtYQrJpJMQSb04nFEAP+/28gGSO7btSAUQOoYwC+vEBsPiE7LwAAiU1SOZU6bLgAAAAASUVORK5CYII='/>`;
-	var ifil = `<img src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAQ0lEQVQ4je2TMQoAMAgD8/9X5WfXqUOhYtw9cBE8RKL0QlhfSKkkK1hBKdAgjaXANgC251G+/W643aAbTm4QMXpfSTreNxQS50vgFQAAAABJRU5ErkJggg=='/>`;
+	for(var d of pth.split('/')) {
+		if(d.startsWith('_')) {
+			return res.send(render(':&lt;', '<h2>탐색가능한 디렉토리가 아닙니다.</h2><a href=".." onclick="history.back(); return false;">[뒤로 가기]</a>'));
+		}
+	}
+	
+	var idir = `<img alt="[D]" src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAO0lEQVQ4jWNgQID/WDDR4H9DgwMGJtYQrJpJMQSb04nFEAP+/28gGSO7btSAUQOoYwC+vEBsPiE7LwAAiU1SOZU6bLgAAAAASUVORK5CYII='/>`;
+	var ifil = `<img alt="[F]" src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAQ0lEQVQ4je2TMQoAMAgD8/9X5WfXqUOhYtw9cBE8RKL0QlhfSKkkK1hBKdAgjaXANgC251G+/W643aAbTm4QMXpfSTreNxQS50vgFQAAAABJRU5ErkJggg=='/>`;
+	var idru = `<img alt="[D]" src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAZElEQVQ4jb2SwQ3AMAwCGa2jeTRvRl9uVNe1cB5B4hcuCBlYYmFZNLs+ViFleAKpqiteANJGzs3OAeLtFgAAQTJGHwEi7O4PRAbkcIIcaBCAV4MdQNugO+VYvGugnfPPgBOVP9/qIOeFrIfnRAAAAABJRU5ErkJggg=='/>`;
 	
 	if(!(!pth || pth == '/')) {
 		content += `
 			<tr>
-				<td>${idir} <a class=filelink href="..">..</a></td>
+				<td class=nomobile></td>
+				<td>${idru} <a class=filelink href="..">..</a></td>
+				<td style="text-align: center;" class=nomobil2>-</td>
+				<td style="text-align: center;" class=nomobile>-</td>
 				<td style="text-align: center;"><form method=get style="margin: 0;" action=".."><button type=submit>탐색</button></form></td>
 			</tr>
 		`
 	}
 	
-	var fc = 0, dc = 0;
+	var fc = 0, dc = 0, n = 1;
 	
-	for(dir of (p => fs.readdirSync(p).filter(f => fs.statSync(path.join(p, f)).isDirectory()))('./downloadable' + pth)) {
+	for(var dir of await (async p => await readdir(p).filter(async f => (await stat(path.join(p, f))).isDirectory()))('./downloadable' + pth)) {
+		var df = `<form method=get style="margin: 0;" action="/files${pth || '/'}${dir}/"><button type=submit>탐색</button></form>`;
+		if(dir.startsWith('_')) df = '';
 		content += `
 			<tr>
-				<td>${idir} <a class=filelink href="/downloads${pth || '/'}${dir}/">${dir}</a></td>
-				<td style="text-align: center;"><form method=get style="margin: 0;" action="/downloads${pth || '/'}${dir}/"><button type=submit>탐색</button></form></td>
+				<td style="text-align: center;" class=nomobile>${n++}</td>
+				<td>${idir} <${df ? 'a' : 'sqan'} class=filelink href="/files${pth || '/'}${dir}/">${dir}</${df ? 'a' : 'sqan'}></td>
+				<td style="text-align: center;" class=nomobil2>-</td>
+				<td style="text-align: center;" class=nomobile>-</td>
+				<td style="text-align: center;">${df}</td>
 			</tr>
 		`
 		dc++;
 	}
 	
-	for(file of (p => fs.readdirSync(p).filter(f => !(fs.statSync(path.join(p, f)).isDirectory())))('./downloadable' + pth)) {
+	for(var file of await (async p => await readdir(p).filter(async f => !((await stat(path.join(p, f))).isDirectory())))('./downloadable' + pth)) {
 		if(file.toLowerCase().includes('_token')) continue;
 		var df = `<form method=get style="margin: 0;" action="/download${pth || '/'}${file}"><button type=submit>다운로드</button></form>`;
 		if(file.startsWith('_')) df = '';
+		var icon = ifil;
+		if(['.bmp', '.png', '.tif', '.tiff', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(path.parse(file).ext.toLowerCase()))
+			icon = `<img alt="[F]" src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAlUlEQVQ4ja2TUQ7DIAxDfXQfjZt5Hy0sCU7LpCFFCBE/TAiAH2riaEiCSG7zG0RRjGeIBSUxBIHnTvYkI4ZkIe2dqxiSYJysJBVYhaNCJ2CJAfFez2L5Gsg7YCwkdgdTfAWzg+3OgMYYt4srvhA2Dsx7T0gEkRSZ+yGJw2ZtnAWyvWDI3V/wnWgSw55++lDNAX+BZMAHowVsdnk3iQ8AAAAASUVORK5CYII=' />`;
+		if(['.mp4', '.wmv', '.avi', '.mpg', '.mpeg', '.webm', '.mov', '.flv', '.mkv', '.3gp'].includes(path.parse(file).ext.toLowerCase()))
+			icon = `<img alt="[F]" src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAcUlEQVQ4jcWSUQrAIAxDPXqO1ptlH7MSaydFPxYIStBXrbY2i91HousEQpI0M5oZASikBPwCjLwEAbBUT060hyQLa9ULzva8k4oCZMqmBrr9/uy90dPExqYAtQMUrI0tA3T8B+BeAB7sHF8hZlf/4EoPgJ9tLBkmDFQAAAAASUVORK5CYII=' />`;
+		if(['.mp1', '.mp2', '.mp3', '.snd', '.mid', '.midi', '.wav', '.wma', '.m4a', '.aac', '.amr'].includes(path.parse(file).ext.toLowerCase()))
+			icon = `<img alt="[F]" src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAYklEQVQ4jc2QQQ6AIAwE9+k8jZ+NBzTailBqTNyE9NKdTpD+GvaXLNOSASGg1oqkNhdA5vIBAUJG55I38PMBhIf4y97oDrBks7xk0ANdjSShUgZ/0QFFy3OjYHkGSuVV+dtsL/DcvTkKghsAAAAASUVORK5CYII=' />`;
+		const d = (await stat('./downloadable' + (pth || '/') + file)).mtime;
+		const lm = d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + d.getMinutes();
 		content += `
 			<tr>
-				<td>${ifil} ${file}</td>
+				<td style="text-align: center;" class=nomobile>${n++}</td>
+				<td>${icon} <${df ? 'a' : 'sqan'} class=filelink href="/download${pth || '/'}${file}">${file}</${df ? 'a' : 'sqan'}></td>
+				<td style="text-align: center;" class=nomobil2>${lm}</td>
+				<td style="text-align: center;" class=nomobile>${(await stat('./downloadable' + (pth || '/') + file)).size}</td>
 				<td style="text-align: center;">${df}</td>
 			</tr>
 		`;
@@ -319,56 +470,129 @@ server.get(/\/downloads(.*)/i, (req, res) => {
 		<small>파일 ${fc}개 / 디렉토리 ${dc}개</small>
 	`;
 	
-	res.send(render('비밀의 겨울눈밭 - 파일 서버 [' + (pth || '/') + ']', content));
+	res.send(render(sitename + ' - 파일 서버 [' + (pth || '/') + ']', content));
 });
 
-server.get(/\/download\/(.*)/i, (req, res) => {
+server.get(/^\/download\/(.*)$/i, async (req, res) => {
 	const ip       = (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '1.2.3.4');
 	const filename = req.params[0];
 	
-	if(path.parse(filename).base.startsWith('_') || filename.toLowerCase().includes('token') || filename.includes('..') || !fs.existsSync('./downloadable/' + filename)) {
-		return res.send(render(':&lt;', '<h2>파일이 존재하지 않습니다.</h2>'));
+	if(path.parse(filename).base.startsWith('_') || filename.toLowerCase().includes('_token.txt') || filename.includes('..') || !(await exists('./downloadable/' + filename))) {
+		return res.send(render(':&lt;', '<h2>파일이 존재하지 않습니다.</h2><a href=".." onclick="history.back(); return false;">[뒤로 가기]</a>'));
 	}
 	
-	if(fs.lstatSync('./downloadable/' + filename).isDirectory()) {
-		return res.send(render(':&lt;', '<h2>파일이 아닙니다.</h2>'));
+	if((await lstat('./downloadable/' + filename)).isDirectory()) {
+		return res.send(render(':&lt;', '<h2>파일이 아닙니다.</h2><a href=".." onclick="history.back(); return false;">[뒤로 가기]</a>'));
+	}
+	
+	for(var d of filename.split('/')) {
+		if(d.startsWith('_')) {
+			return res.send(render(':&lt;', '<h2>탐색가능한 디렉토리가 아닙니다.</h2><a href=".." onclick="history.back(); return false;">[뒤로 가기]</a>'));
+		}
 	}
 	
 	const fnarr = filename.split('/');
 	var token = '';
 	try {
-		token = fs.readFileSync(path.dirname(fs.realpathSync('./downloadable/' + filename).replace(/\\/g, '/')) + '/_token.txt').toString();
-	} catch(e){}
-	
-	if(req.query['token'] === undefined) {
-		return res.send(render('비밀의 겨울눈밭', `
-			<form method=get>
-				<div class=form-group>
-					<label>파일 이름: </label><br />
-					<input type=text readonly class=form-control value="${fnarr[fnarr.length - 1]}" />
-				</div>
-				
-				<div class=form-group>
-					<label>파일 크기(바이트): </label><br />
-					<input type=text readonly class=form-control value="${fs.statSync('./downloadable/' + filename).size}" />
-				</div>
-				
-				<div class=form-group>
-					<label>다운로드 비밀키: </label><br />
-					<input class=form-control type=password name=token ${!token ? 'value="" readonly placeholder="(필요 없음)"' : ''} />
-				</div>
-				
-				<div class=form-group>
-					<button style="width: 100px; margin: 0 20px 0 0;" type=submit>다운로드</button>
-					<button style="width: 80px; margin: 0 20px 0 0;" type=reset>초기화</button>
-					<button style="width: 80px; margin: 0 20px 0 0;" type=submit formaction="/downloads/">취소</button>
-				</div>
-			</form>
-		`));
-	} else if(req.query['token'].toLowerCase() !== token && token) {
-		return res.send(render(':&lt;', '<h2>비밀키가 일치하지 않습니다.</h2>'));
+		token = (await readFile(path.dirname((await realpath('./downloadable/' + filename)).replace(/\\/g, '/')) + '/_token.txt', 1)).toString();
+	} catch(e){
+		
 	}
-	console.log('파일 ' + filename + '을 내려받았읍니다.');
+	
+	return res.send(render(sitename, `
+		<form method=post>
+			<div class=form-group>
+				<label>파일 이름: </label><br />
+				<input type=text readonly class=form-control value="${fnarr[fnarr.length - 1]}" />
+			</div>
+			
+			<div class=form-group>
+				<label>파일 크기(바이트): </label><br />
+				<input type=text readonly class=form-control value="${(await stat('./downloadable/' + filename)).size}" />
+			</div>
+			
+			<div class=form-group>
+				<label>다운로드 비밀키: </label><br />
+				<input class=form-control type=password name=token ${!token ? 'value="" readonly placeholder="(필요 없음)"' : ''} />
+			</div>
+			
+			<div class=form-group>
+				<button style="width: 100px; margin: 0 20px 0 0;" type=submit>다운로드</button>
+				<button style="width: 80px; margin: 0 20px 0 0;" type=reset>초기화</button>
+				<button style="width: 80px; margin: 0 20px 0 0;" type=submit formmethod=get formaction="/files/" onclick="history.back(); return false;">취소</button>
+			</div>
+		</form>
+	`));
+});
+
+var tkns = {};
+
+function rndval(chars, length) {
+    var   result           = '';
+    const characters       = chars;
+    const charactersLength = characters.length;
+    for (i=0; i<length; i++) {
+        result += characters.charAt(Math.floor(Math.random() * charactersLength));
+    }
+    return result;
+}
+
+server.post(/^\/download\/(.*)$/i, async (req, res) => {
+	const filename = req.params[0];
+	var token = '';
+	try {
+		token = (await readFile(path.dirname((await realpath('./downloadable/' + filename)).replace(/\\/g, '/')) + '/_token.txt', 1)).toString();
+	} catch(e){
+		
+	}
+
+	if(path.parse(filename).base.startsWith('_') || filename.toLowerCase().includes('_token.txt') || filename.includes('..') || !(await exists('./downloadable/' + filename))) {
+		return res.send(render(':&lt;', '<h2>파일이 존재하지 않습니다.</h2><a href=".." onclick="history.back(); return false;">[뒤로 가기]</a>'));
+	}
+	
+	if((await lstat('./downloadable/' + filename)).isDirectory()) {
+		return res.send(render(':&lt;', '<h2>파일이 아닙니다.</h2><a href=".." onclick="history.back(); return false;">[뒤로 가기]</a>'));
+	}
+	
+	for(var d of filename.split('/')) {
+		if(d.startsWith('_')) {
+			return res.send(render(':&lt;', '<h2>탐색가능한 디렉토리가 아닙니다.</h2><a href=".." onclick="history.back(); return false;">[뒤로 가기]</a>'));
+		}
+	}
+	
+	if((req.body['token'] || '').toLowerCase() !== token && token) {
+		return res.send(render(':&lt;', '<h2>비밀키가 일치하지 않습니다.</h2><a href=".." onclick="history.back(); return false;">[뒤로 가기]</a>'));
+	} else {
+		const t = rndval('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890123456789012345', 64);
+		
+		tkns[t] = {
+			filename, token: t,
+		};
+		setTimeout(() => tkns[t] = undefined, 3600000);
+		
+		res.redirect('/post_download/' + filename + '?token=' + t);
+	}
+});
+
+server.get(/^\/post_download\/(.*)$/i, async (req, res) => {
+	const ip       = (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '1.2.3.4');
+	const filename = req.params[0];
+	
+	if(path.parse(filename).base.startsWith('_') || filename.toLowerCase().includes('_token.txt') || filename.includes('..') || !(await exists('./downloadable/' + filename))) {
+		return res.send(render(':&lt;', '<h2>파일이 존재하지 않습니다.</h2><a href=".." onclick="history.back(); return false;">[뒤로 가기]</a>'));
+	}
+	
+	if((await lstat('./downloadable/' + filename)).isDirectory()) {
+		return res.send(render(':&lt;', '<h2>파일이 아닙니다.</h2><a href=".." onclick="history.back(); return false;">[뒤로 가기]</a>'));
+	}
+	
+	for(var d of filename.split('/')) {
+		if(d.startsWith('_')) {
+			return res.send(render(':&lt;', '<h2>탐색가능한 디렉토리가 아닙니다.</h2><a href=".." onclick="history.back(); return false;">[뒤로 가기]</a>'));
+		}
+	}
+	
+	if(!tkns[req.query.token] || tkns[req.query.token].filename != filename) return res.send(render(':&lt;', '<h2>토큰이 일치하지 않습니다.</h2><a href=".." onclick="history.back(); return false;">[뒤로 가기]</a>'));
 	res.sendFile(filename, { root: './downloadable/' });
 });
 
@@ -429,7 +653,7 @@ server.get('/', (req, res) => {
 		</table>
 	`;
 	
-	res.send(render('비밀의 겨울눈밭', `
+	res.send(render(sitename, `
 		${content}
 		<!-- <font size=5>안녕!</font> -->
 		<p>${a.username} (사용자 ${a.id})으로 접속 중입니다</p>
@@ -588,15 +812,15 @@ server.use(function(req, res) {
 	return res.send('');
 });
 
-server.listen(80, '192.168.0.10');
+server.listen(80, host);
 
 const ftpsrv = require('ftp-srv');
 
 const ftp = new ftpsrv({
-    url: 'ftp://192.168.0.10:21',
+    url: 'ftp://' + host + ':21',
     file_format: 'ls',
     anonymous: false,
-    greeting: ['비밀의 겨울눈밭'],
+    greeting: [sitename],
 });
 
 
